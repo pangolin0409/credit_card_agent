@@ -9,7 +9,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 
 @TestConfiguration(proxyBeanMethods = false)
-class AgentTestConfiguration {
+public class AgentTestConfiguration {
 
     static final String SUPERVISOR_ONLY_TOOL = "approveApprovalDraft";
 

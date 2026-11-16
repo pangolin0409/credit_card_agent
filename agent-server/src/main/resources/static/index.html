@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>信用卡經辦 AI Agent</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+<header class="bg-slate-900 text-white">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div>
+            <h1 class="text-xl font-semibold">信用卡經辦 AI Agent</h1>
+            <p class="text-sm text-slate-300">新戶核卡初審 · 異常刷卡通報封鎖</p>
+        </div>
+        <a href="supervisor.html" class="rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-amber-400">主管放行畫面</a>
+    </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 grid gap-6 lg:grid-cols-[360px_1fr]">
+    <section class="space-y-6">
+        <div class="rounded-lg bg-white p-5 shadow-sm">
+            <h2 class="font-semibold mb-1">場景一：新戶核卡初審</h2>
+            <p class="text-xs text-slate-500 mb-3">AI 只能建立草稿單，最終由主管放行</p>
+            <select id="applicantSelect" class="w-full rounded-md border border-slate-300 p-2 text-sm">
+                <option value="A100000001">A100000001 王志明（黑名單高收入）</option>
+                <option value="A100000002">A100000002 林淑芬（負債比過高）</option>
+                <option value="A100000003">A100000003 陳建宏（頂級無限卡）</option>
+                <option value="A100000004">A100000004 張雅婷（御璽卡）</option>
+                <option value="A100000005">A100000005 李俊傑（額度受 DBR 限縮）</option>
+                <option value="A100000006">A100000006 黃美惠（分數不足無限卡）</option>
+                <option value="A100000007">A100000007 吳宗翰（未達門檻）</option>
+            </select>
+            <button id="reviewApplicationButton" class="mt-3 w-full rounded-md bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">送交 AI 初審</button>
+        </div>
+
+        <div class="rounded-lg bg-white p-5 shadow-sm">
+            <h2 class="font-semibold mb-1">場景二：異常刷卡封控</h2>
+            <p class="text-xs text-slate-500 mb-3">單筆超過 50 萬一律升級主管，AI 不得鎖卡</p>
+            <select id="cardSelect" class="w-full rounded-md border border-slate-300 p-2 text-sm">
+                <option value="4000000000000001">…0001 林小旅（出國旅遊正常）</option>
+                <option value="4000000000000002">…0002 陳大明（境外盜刷）</option>
+                <option value="4000000000000003">…0003 張美玲（旅遊國家不符）</option>
+                <option value="4000000000000004">…0004 黃志強（小額測卡）</option>
+                <option value="4000000000000005">…0005 吳建國（超高金額紅線）</option>
+                <option value="4000000000000006">…0006 李小華（正常消費）</option>
+            </select>
+            <button id="analyzeCardButton" class="mt-3 w-full rounded-md bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">送交 AI 分析</button>
+        </div>
+
+        <div class="rounded-lg bg-white p-5 shadow-sm">
+            <h2 class="font-semibold mb-3">自由提問</h2>
+            <textarea id="freeTextInput" rows="3" class="w-full rounded-md border border-slate-300 p-2 text-sm" placeholder="例如：請說明卡號 4000000000000004 為何被凍結"></textarea>
+            <button id="sendFreeTextButton" class="mt-3 w-full rounded-md bg-slate-700 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50">送出</button>
+        </div>
+    </section>
+
+    <section class="rounded-lg bg-white p-5 shadow-sm flex flex-col min-h-[70vh]">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="font-semibold">AI 處理紀錄</h2>
+            <span id="loadingIndicator" class="hidden text-sm text-blue-600 animate-pulse">AI 處理中…</span>
+        </div>
+        <div id="conversationLog" class="flex-1 space-y-4 overflow-y-auto">
+            <p id="emptyState" class="text-sm text-slate-400">從左側選擇案件送交 AI，處理結果會顯示在這裡。</p>
+        </div>
+    </section>
+</main>
+
+<script>
+    const URGENT_WARNING_PREFIX = '【緊急警告】';
+    const actionButtons = ['reviewApplicationButton', 'analyzeCardButton', 'sendFreeTextButton']
+        .map(id => document.getElementById(id));
+
+    function setBusy(isBusy) {
+        actionButtons.forEach(button => button.disabled = isBusy);
+        document.getElementById('loadingIndicator').classList.toggle('hidden', !isBusy);
+    }
+
+    function appendEntry(className, text) {
+        document.getElementById('emptyState')?.remove();
+        const entry = document.createElement('div');
+        entry.className = className;
+        entry.textContent = text;
+        const log = document.getElementById('conversationLog');
+        log.appendChild(entry);
+        log.scrollTop = log.scrollHeight;
+        return entry;
+    }
+
+    function appendClerkMessage(message) {
+        appendEntry('ml-auto max-w-[85%] rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm', '經辦：' + message);
+    }
+
+    function appendAgentReply(reply) {
+        if (reply.startsWith(URGENT_WARNING_PREFIX)) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'rounded-lg border-2 border-red-600 overflow-hidden';
+            const banner = document.createElement('div');
+            banner.className = 'bg-red-600 text-white font-bold px-4 py-2';
+            banner.textContent = '緊急警告：超高金額交易已升級資深風控主管，AI 未執行鎖卡';
+            const body = document.createElement('div');
+            body.className = 'whitespace-pre-wrap px-4 py-3 text-sm bg-red-50';
+            body.textContent = reply;
+            wrapper.append(banner, body);
+            document.getElementById('conversationLog').appendChild(wrapper);
+            return;
+        }
+        appendEntry('max-w-[85%] whitespace-pre-wrap rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm', reply);
+    }
+
+    async function sendToAgent(message) {
+        appendClerkMessage(message);
+        setBusy(true);
+        try {
+            const response = await fetch('/api/agent/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message})
+            });
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            const {reply} = await response.json();
+            appendAgentReply(reply);
+        } catch (error) {
+            appendEntry('rounded-lg bg-red-100 text-red-800 px-4 py-3 text-sm', '呼叫 AI Agent 失敗：' + error.message);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    document.getElementById('reviewApplicationButton').addEventListener('click', () => {
+        const customerId = document.getElementById('applicantSelect').value;
+        sendToAgent(`請依 SOP 審核新戶核卡申請，客戶編號 ${customerId}`);
+    });
+
+    document.getElementById('analyzeCardButton').addEventListener('click', () => {
+        const cardNumber = document.getElementById('cardSelect').value;
+        sendToAgent(`請依 SOP 分析卡號 ${cardNumber} 的近期交易並處置`);
+    });
+
+    document.getElementById('sendFreeTextButton').addEventListener('click', () => {
+        const input = document.getElementById('freeTextInput');
+        const message = input.value.trim();
+        if (message) {
+            sendToAgent(message);
+            input.value = '';
+        }
+    });
+</script>
+</body>
+</html>

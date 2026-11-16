@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>主管核卡放行</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+<header class="bg-slate-900 text-white">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div>
+            <h1 class="text-xl font-semibold">主管核卡放行</h1>
+            <p class="text-sm text-slate-300">AI 初審草稿單須經主管核准才會正式發卡</p>
+        </div>
+        <a href="index.html" class="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-600">返回經辦畫面</a>
+    </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 space-y-4">
+    <div class="rounded-lg bg-white p-4 shadow-sm flex flex-wrap items-end gap-4">
+        <label class="text-sm">
+            <span class="block text-slate-500 mb-1">主管代號</span>
+            <input id="supervisorIdInput" value="SUPERVISOR_01" class="rounded-md border border-slate-300 p-2 text-sm">
+        </label>
+        <button id="reloadButton" class="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600">重新整理</button>
+        <p id="resultMessage" class="text-sm"></p>
+    </div>
+
+    <div class="rounded-lg bg-white shadow-sm overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-left text-slate-500">
+            <tr>
+                <th class="px-4 py-3">草稿</th>
+                <th class="px-4 py-3">客戶</th>
+                <th class="px-4 py-3">卡別</th>
+                <th class="px-4 py-3 text-right">額度</th>
+                <th class="px-4 py-3">AI 評估摘要</th>
+                <th class="px-4 py-3">建立時間</th>
+                <th class="px-4 py-3">狀態</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+            </thead>
+            <tbody id="draftTableBody"></tbody>
+        </table>
+    </div>
+</main>
+
+<script>
+    const MCP_SERVER_URL = 'http://localhost:8081';
+    const CARD_TYPE_LABELS = {INFINITE: '頂級無限卡', SIGNATURE: '御璽卡'};
+
+    function showResult(text, isError) {
+        const resultMessage = document.getElementById('resultMessage');
+        resultMessage.textContent = text;
+        resultMessage.className = 'text-sm ' + (isError ? 'text-red-600' : 'text-green-700');
+    }
+
+    function createCell(text, className = '') {
+        const cell = document.createElement('td');
+        cell.className = 'px-4 py-3 align-top ' + className;
+        cell.textContent = text;
+        return cell;
+    }
+
+    function createActionButton(label, colorClass, onClick) {
+        const button = document.createElement('button');
+        button.className = `rounded-md px-3 py-1 text-white text-sm ${colorClass}`;
+        button.textContent = label;
+        button.addEventListener('click', onClick);
+        return button;
+    }
+
+    function renderDrafts(drafts) {
+        const tableBody = document.getElementById('draftTableBody');
+        tableBody.replaceChildren();
+        if (drafts.length === 0) {
+            const row = document.createElement('tr');
+            row.appendChild(createCell('目前沒有待審草稿單', 'text-slate-400'));
+            row.firstChild.colSpan = 8;
+            tableBody.appendChild(row);
+            return;
+        }
+        drafts.forEach(draft => {
+            const row = document.createElement('tr');
+            row.className = 'border-t border-slate-100';
+            row.append(
+                createCell('#' + draft.draftId),
+                createCell(`${draft.customerId} ${draft.fullName}`),
+                createCell(CARD_TYPE_LABELS[draft.cardType] ?? draft.cardType),
+                createCell(draft.creditLimit.toLocaleString('zh-TW'), 'text-right'),
+                createCell(draft.assessmentSummary, 'max-w-md whitespace-pre-wrap'),
+                createCell(draft.createdAt.replace('T', ' ').slice(0, 19)),
+                createCell('待審核', 'text-amber-600 font-medium'));
+            const actionCell = createCell('', 'space-x-2 whitespace-nowrap');
+            actionCell.append(
+                createActionButton('核准', 'bg-green-600 hover:bg-green-500', () => reviewDraft(draft.draftId, 'approve')),
+                createActionButton('駁回', 'bg-red-600 hover:bg-red-500', () => reviewDraft(draft.draftId, 'reject')));
+            row.appendChild(actionCell);
+            tableBody.appendChild(row);
+        });
+    }
+
+    async function loadDrafts() {
+        try {
+            const response = await fetch(`${MCP_SERVER_URL}/api/supervisor/approval-drafts?status=PENDING_REVIEW`);
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            renderDrafts(await response.json());
+        } catch (error) {
+            showResult('無法讀取草稿單：' + error.message, true);
+        }
+    }
+
+    async function reviewDraft(draftId, action) {
+        const supervisorId = document.getElementById('supervisorIdInput').value.trim();
+        if (!supervisorId) {
+            showResult('請先輸入主管代號', true);
+            return;
+        }
+        const response = await fetch(`${MCP_SERVER_URL}/api/supervisor/approval-drafts/${draftId}/${action}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({supervisorId})
+        });
+        if (response.status === 409) {
+            showResult(`草稿 #${draftId}：此草稿已被處理`, true);
+        } else if (!response.ok) {
+            showResult(`草稿 #${draftId} 處理失敗：HTTP ${response.status}`, true);
+        } else {
+            const result = await response.json();
+            showResult(result.status === 'APPROVED'
+                ? `草稿 #${draftId} 已核准，發卡卡號 ${result.cardNumber}`
+                : `草稿 #${draftId} 已駁回`, false);
+        }
+        await loadDrafts();
+    }
+
+    document.getElementById('reloadButton').addEventListener('click', loadDrafts);
+    loadDrafts();
+</script>
+</body>
+</html>

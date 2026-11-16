@@ -1,11 +1,11 @@
-package com.demo.creditcard.mcp.supervisor;
+package com.demo.creditcard.mcp.shared;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-public class SupervisorCorsConfiguration implements WebMvcConfigurer {
+public class WebCorsConfiguration implements WebMvcConfigurer {
 
     private static final String AGENT_SERVER_ORIGIN = "http://localhost:8080";
 
@@ -14,5 +14,8 @@ public class SupervisorCorsConfiguration implements WebMvcConfigurer {
         registry.addMapping("/api/supervisor/**")
                 .allowedOrigins(AGENT_SERVER_ORIGIN)
                 .allowedMethods("GET", "POST");
+        registry.addMapping("/api/clerk/**")
+                .allowedOrigins(AGENT_SERVER_ORIGIN)
+                .allowedMethods("GET");
     }
 }

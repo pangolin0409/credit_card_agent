@@ -58,6 +58,8 @@
     const URGENT_WARNING_PREFIX = '【緊急警告】';
     const EMPTY_STATE_TEXT = '點「待審案件」或「警示卡片」挑選案件，或輸入 / 使用指令。同一段對話中可以直接追問。';
     const SEARCH_DELAY_MILLISECONDS = 250;
+    const NO_ACTIVE_SUGGESTION = -1;
+    const IME_PROCESSING_KEY_CODE = 229;
     const SKILL_MENU_PATTERN = /^[\/／]([^\s　]*)$/;
     const SKILL_ARGUMENT_PATTERN = /^[\/／]([^\s　]+)[\s　]+(.*)$/;
     const APPLICATIONS_SOURCE = '/api/clerk/applications';
@@ -81,7 +83,9 @@
     let conversationId = crypto.randomUUID();
     let skills = [];
     let suggestions = [];
-    let activeSuggestionIndex = 0;
+    let activeSuggestionIndex = NO_ACTIVE_SUGGESTION;
+    let isBusy = false;
+    let activeCaseList = null;
     let searchTimer = null;
     let searchSequence = 0;
 
@@ -94,9 +98,10 @@
         document.getElementById('conversationLog').replaceChildren(emptyState);
     }
 
-    function setBusy(isBusy) {
-        actionButtons.forEach(button => button.disabled = isBusy);
-        document.getElementById('loadingIndicator').classList.toggle('hidden', !isBusy);
+    function setBusy(busy) {
+        isBusy = busy;
+        actionButtons.forEach(button => button.disabled = busy);
+        document.getElementById('loadingIndicator').classList.toggle('hidden', !busy);
     }
 
     function appendElement(element) {
@@ -140,6 +145,9 @@
     }
 
     async function sendToAgent(message) {
+        if (isBusy) {
+            return;
+        }
         appendClerkMessage(message);
         setBusy(true);
         try {
@@ -191,7 +199,7 @@
         return badge;
     }
 
-    function createCaseRow(item, isApplication) {
+    function createCaseRow(item, isApplication, listState) {
         const targetSkill = findAgentSkillByArgument(isApplication ? 'customerId' : 'cardNumber');
         const row = document.createElement(item.actionable ? 'button' : 'div');
         row.className = 'flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm '
@@ -203,7 +211,15 @@
         row.append(description, createStatusBadge(item.status, item.statusLabel));
         if (item.actionable && targetSkill) {
             const target = isApplication ? item.customerId : item.cardNumber;
-            row.addEventListener('click', () => sendToAgent(`/${targetSkill.name} ${target}`));
+            row.addEventListener('click', () => {
+                if (isBusy || !listState.isActive || row.dataset.isSent) {
+                    return;
+                }
+                row.dataset.isSent = 'true';
+                row.disabled = true;
+                row.classList.add('opacity-50');
+                sendToAgent(`/${targetSkill.name} ${target}`);
+            });
         }
         return row;
     }
@@ -218,11 +234,21 @@
             const title = document.createElement('div');
             title.className = 'px-4 py-2 text-sm font-semibold border-b border-slate-200';
             title.textContent = `${skill.name}（${items.length} 筆）`;
-            container.append(title, ...items.map(item => createCaseRow(item, isApplication)));
+            const listState = {isActive: true, container};
+            container.append(title, ...items.map(item => createCaseRow(item, isApplication, listState)));
+            deactivatePreviousCaseList(listState);
             appendElement(container);
         } catch (error) {
             appendError('無法取得清單：' + error.message);
         }
+    }
+
+    function deactivatePreviousCaseList(currentList) {
+        if (activeCaseList) {
+            activeCaseList.isActive = false;
+            activeCaseList.container.classList.add('opacity-50');
+        }
+        activeCaseList = currentList;
     }
 
     function showCaseListByName(name) {
@@ -245,9 +271,9 @@
         suggestionPanel.replaceChildren();
     }
 
-    function renderSuggestions(items) {
+    function renderSuggestions(items, initialIndex = 0) {
         suggestions = items;
-        activeSuggestionIndex = 0;
+        activeSuggestionIndex = initialIndex;
         if (items.length === 0) {
             hideSuggestions();
             return;
@@ -255,7 +281,8 @@
         suggestionPanel.replaceChildren(...items.map((item, index) => {
             const option = document.createElement('div');
             option.className = 'flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm'
-                + (index === activeSuggestionIndex ? ' bg-blue-50' : '');
+                + (index === activeSuggestionIndex ? ' bg-blue-50' : '')
+                + (item.isSelectable === false ? ' text-slate-400 cursor-not-allowed' : '');
             const label = document.createElement('span');
             label.className = 'font-medium';
             label.textContent = item.label;
@@ -273,7 +300,9 @@
     }
 
     function moveActiveSuggestion(offset) {
-        activeSuggestionIndex = (activeSuggestionIndex + offset + suggestions.length) % suggestions.length;
+        activeSuggestionIndex = activeSuggestionIndex === NO_ACTIVE_SUGGESTION
+            ? (offset > 0 ? 0 : suggestions.length - 1)
+            : (activeSuggestionIndex + offset + suggestions.length) % suggestions.length;
         [...suggestionPanel.children].forEach((option, index) =>
             option.classList.toggle('bg-blue-50', index === activeSuggestionIndex));
         suggestionPanel.children[activeSuggestionIndex].scrollIntoView({block: 'nearest'});
@@ -281,8 +310,11 @@
 
     function selectSuggestion(index) {
         const selected = suggestions[index];
+        if (!selected || selected.isSelectable === false) {
+            return;
+        }
         hideSuggestions();
-        selected?.onSelect();
+        selected.onSelect();
     }
 
     function suggestSkills(prefix) {
@@ -311,6 +343,7 @@
         return {
             label: isApplicant ? `${item.fullName}　${item.customerId}` : `${item.holderName}　末四碼 ${item.last4}`,
             detail: isApplicant ? item.statusLabel : `${item.verdictLabel}　${item.statusLabel}`,
+            isSelectable: item.actionable,
             onSelect: () => {
                 messageInput.value = '';
                 sendToAgent(`/${skill.name} ${target}`);
@@ -320,8 +353,8 @@
 
     function scheduleCandidateSearch(skill, keyword) {
         cancelPendingSearch();
+        hideSuggestions();
         if (!keyword) {
-            hideSuggestions();
             return;
         }
         const sequence = ++searchSequence;
@@ -330,7 +363,7 @@
                 const items = await fetchJson(
                     `${MCP_SERVER_URL}${SEARCH_PATHS[skill.argument]}?q=${encodeURIComponent(keyword)}`);
                 if (sequence === searchSequence) {
-                    renderSuggestions(items.map(item => toCandidate(skill, item)));
+                    renderSuggestions(items.map(item => toCandidate(skill, item)), NO_ACTIVE_SUGGESTION);
                 }
             } catch (error) {
                 hideSuggestions();
@@ -358,7 +391,7 @@
 
     function sendTypedMessage() {
         const message = messageInput.value.trim();
-        if (message) {
+        if (message && !isBusy) {
             cancelPendingSearch();
             hideSuggestions();
             sendToAgent(message);
@@ -367,14 +400,14 @@
     }
 
     function handleInputKeydown(event) {
-        if (event.isComposing) {
+        if (event.isComposing || event.keyCode === IME_PROCESSING_KEY_CODE) {
             return;
         }
         const isSuggestionOpen = suggestions.length > 0;
         if (isSuggestionOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
             event.preventDefault();
             moveActiveSuggestion(event.key === 'ArrowDown' ? 1 : -1);
-        } else if (isSuggestionOpen && event.key === 'Enter') {
+        } else if (isSuggestionOpen && event.key === 'Enter' && activeSuggestionIndex !== NO_ACTIVE_SUGGESTION) {
             event.preventDefault();
             selectSuggestion(activeSuggestionIndex);
         } else if (isSuggestionOpen && event.key === 'Escape') {

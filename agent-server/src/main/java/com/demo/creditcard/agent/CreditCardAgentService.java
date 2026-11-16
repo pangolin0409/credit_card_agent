@@ -3,6 +3,7 @@ package com.demo.creditcard.agent;
 import java.util.List;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.stereotype.Service;
 
@@ -20,9 +21,10 @@ public class CreditCardAgentService {
         this.toolAllowList = toolAllowList;
     }
 
-    public String chat(String message) {
+    public String chat(String conversationId, String message) {
         return creditCardAgentChatClient.prompt()
                 .user(message)
+                .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, conversationId))
                 .toolCallbacks(toolAllowList.filter(toolCallbackProviders))
                 .call()
                 .content();

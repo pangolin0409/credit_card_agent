@@ -50,7 +50,7 @@
 
         <div class="rounded-lg bg-white p-5 shadow-sm">
             <h2 class="font-semibold mb-3">自由提問</h2>
-            <textarea id="freeTextInput" rows="3" class="w-full rounded-md border border-slate-300 p-2 text-sm" placeholder="例如：請說明卡號 4000000000000004 為何被凍結"></textarea>
+            <textarea id="freeTextInput" rows="3" class="w-full rounded-md border border-slate-300 p-2 text-sm" placeholder="例如：御璽卡的核卡門檻是什麼？或追問：那它為什麼被凍結？"></textarea>
             <button id="sendFreeTextButton" class="mt-3 w-full rounded-md bg-slate-700 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50">送出</button>
         </div>
     </section>
@@ -58,18 +58,32 @@
     <section class="rounded-lg bg-white p-5 shadow-sm flex flex-col min-h-[70vh]">
         <div class="flex items-center justify-between mb-4">
             <h2 class="font-semibold">AI 處理紀錄</h2>
-            <span id="loadingIndicator" class="hidden text-sm text-blue-600 animate-pulse">AI 處理中…</span>
+            <div class="flex items-center gap-3">
+                <span id="loadingIndicator" class="hidden text-sm text-blue-600 animate-pulse">AI 處理中…</span>
+                <button id="newConversationButton" class="rounded-md border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50">開始新對話</button>
+            </div>
         </div>
         <div id="conversationLog" class="flex-1 space-y-4 overflow-y-auto">
-            <p id="emptyState" class="text-sm text-slate-400">從左側選擇案件送交 AI，處理結果會顯示在這裡。</p>
+            <p id="emptyState" class="text-sm text-slate-400">從左側選擇案件送交 AI，處理結果會顯示在這裡。同一段對話中可以直接追問，不用重複編號。</p>
         </div>
     </section>
 </main>
 
 <script>
     const URGENT_WARNING_PREFIX = '【緊急警告】';
-    const actionButtons = ['reviewApplicationButton', 'analyzeCardButton', 'sendFreeTextButton']
+    const EMPTY_STATE_TEXT = '從左側選擇案件送交 AI，處理結果會顯示在這裡。同一段對話中可以直接追問，不用重複編號。';
+    const actionButtons = ['reviewApplicationButton', 'analyzeCardButton', 'sendFreeTextButton', 'newConversationButton']
         .map(id => document.getElementById(id));
+    let conversationId = crypto.randomUUID();
+
+    function startNewConversation() {
+        conversationId = crypto.randomUUID();
+        const emptyState = document.createElement('p');
+        emptyState.id = 'emptyState';
+        emptyState.className = 'text-sm text-slate-400';
+        emptyState.textContent = EMPTY_STATE_TEXT;
+        document.getElementById('conversationLog').replaceChildren(emptyState);
+    }
 
     function setBusy(isBusy) {
         actionButtons.forEach(button => button.disabled = isBusy);
@@ -115,7 +129,7 @@
             const response = await fetch('/api/agent/chat', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message})
+                body: JSON.stringify({conversationId, message})
             });
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status);
@@ -138,6 +152,8 @@
         const cardNumber = document.getElementById('cardSelect').value;
         sendToAgent(`請依 SOP 分析卡號 ${cardNumber} 的近期交易並處置`);
     });
+
+    document.getElementById('newConversationButton').addEventListener('click', startNewConversation);
 
     document.getElementById('sendFreeTextButton').addEventListener('click', () => {
         const input = document.getElementById('freeTextInput');

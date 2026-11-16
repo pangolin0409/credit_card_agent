@@ -19,6 +19,6 @@ public class AgentController {
 
     @PostMapping("/chat")
     public ChatReply chat(@Valid @RequestBody ChatRequest request) {
-        return new ChatReply(creditCardAgentService.chat(request.message()));
+        return new ChatReply(creditCardAgentService.chat(request.resolvedConversationId(), request.message()));
     }
 }

@@ -20,38 +20,22 @@
 <main class="max-w-6xl mx-auto px-4 py-6 grid gap-6 lg:grid-cols-[360px_1fr]">
     <section class="space-y-6">
         <div class="rounded-lg bg-white p-5 shadow-sm">
-            <h2 class="font-semibold mb-1">場景一：新戶核卡初審</h2>
-            <p class="text-xs text-slate-500 mb-3">AI 只能建立草稿單，最終由主管放行</p>
-            <select id="applicantSelect" class="w-full rounded-md border border-slate-300 p-2 text-sm">
-                <option value="A100000001">A100000001 王志明（黑名單高收入）</option>
-                <option value="A100000002">A100000002 林淑芬（負債比過高）</option>
-                <option value="A100000003">A100000003 陳建宏（頂級無限卡）</option>
-                <option value="A100000004">A100000004 張雅婷（御璽卡）</option>
-                <option value="A100000005">A100000005 李俊傑（額度受 DBR 限縮）</option>
-                <option value="A100000006">A100000006 黃美惠（分數不足無限卡）</option>
-                <option value="A100000007">A100000007 吳宗翰（未達門檻）</option>
-            </select>
-            <button id="reviewApplicationButton" class="mt-3 w-full rounded-md bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">送交 AI 初審</button>
+            <h2 class="font-semibold mb-1">待辦案件</h2>
+            <p class="text-xs text-slate-500 mb-3">點選清單上的名字，AI 會直接開始處理</p>
+            <div class="grid grid-cols-2 gap-3">
+                <button id="pendingApplicationsButton" class="rounded-md bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">待審案件</button>
+                <button id="alertCardsButton" class="rounded-md bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">警示卡片</button>
+            </div>
         </div>
 
         <div class="rounded-lg bg-white p-5 shadow-sm">
-            <h2 class="font-semibold mb-1">場景二：異常刷卡封控</h2>
-            <p class="text-xs text-slate-500 mb-3">單筆超過 50 萬一律升級主管，AI 不得鎖卡</p>
-            <select id="cardSelect" class="w-full rounded-md border border-slate-300 p-2 text-sm">
-                <option value="4000000000000001">…0001 林小旅（出國旅遊正常）</option>
-                <option value="4000000000000002">…0002 陳大明（境外盜刷）</option>
-                <option value="4000000000000003">…0003 張美玲（旅遊國家不符）</option>
-                <option value="4000000000000004">…0004 黃志強（小額測卡）</option>
-                <option value="4000000000000005">…0005 吳建國（超高金額紅線）</option>
-                <option value="4000000000000006">…0006 李小華（正常消費）</option>
-            </select>
-            <button id="analyzeCardButton" class="mt-3 w-full rounded-md bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50">送交 AI 分析</button>
-        </div>
-
-        <div class="rounded-lg bg-white p-5 shadow-sm">
-            <h2 class="font-semibold mb-3">自由提問</h2>
-            <textarea id="freeTextInput" rows="3" class="w-full rounded-md border border-slate-300 p-2 text-sm" placeholder="例如：御璽卡的核卡門檻是什麼？或追問：那它為什麼被凍結？"></textarea>
-            <button id="sendFreeTextButton" class="mt-3 w-full rounded-md bg-slate-700 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50">送出</button>
+            <h2 class="font-semibold mb-1">對話</h2>
+            <p class="text-xs text-slate-500 mb-3">輸入 / 叫出指令選單，↑ ↓ 選擇、Enter 確認、Esc 關閉</p>
+            <div class="relative">
+                <textarea id="messageInput" rows="3" class="w-full rounded-md border border-slate-300 p-2 text-sm" placeholder="輸入 / 使用指令，或直接提問"></textarea>
+                <div id="suggestionPanel" class="hidden absolute left-0 right-0 top-full z-10 mt-1 max-h-72 overflow-y-auto rounded-md border border-slate-300 bg-white shadow-lg"></div>
+            </div>
+            <button id="sendMessageButton" class="mt-3 w-full rounded-md bg-slate-700 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50">送出</button>
         </div>
     </section>
 
@@ -64,17 +48,42 @@
             </div>
         </div>
         <div id="conversationLog" class="flex-1 space-y-4 overflow-y-auto">
-            <p id="emptyState" class="text-sm text-slate-400">從左側選擇案件送交 AI，處理結果會顯示在這裡。同一段對話中可以直接追問，不用重複編號。</p>
+            <p id="emptyState" class="text-sm text-slate-400">點「待審案件」或「警示卡片」挑選案件，或輸入 / 使用指令。同一段對話中可以直接追問。</p>
         </div>
     </section>
 </main>
 
 <script>
+    const MCP_SERVER_URL = 'http://localhost:8081';
     const URGENT_WARNING_PREFIX = '【緊急警告】';
-    const EMPTY_STATE_TEXT = '從左側選擇案件送交 AI，處理結果會顯示在這裡。同一段對話中可以直接追問，不用重複編號。';
-    const actionButtons = ['reviewApplicationButton', 'analyzeCardButton', 'sendFreeTextButton', 'newConversationButton']
+    const EMPTY_STATE_TEXT = '點「待審案件」或「警示卡片」挑選案件，或輸入 / 使用指令。同一段對話中可以直接追問。';
+    const SEARCH_DELAY_MILLISECONDS = 250;
+    const SKILL_MENU_PATTERN = /^[\/／]([^\s　]*)$/;
+    const SKILL_ARGUMENT_PATTERN = /^[\/／]([^\s　]+)[\s　]+(.*)$/;
+    const APPLICATIONS_SOURCE = '/api/clerk/applications';
+    const SEARCH_PATHS = {
+        customerId: '/api/clerk/applicants/search',
+        cardNumber: '/api/clerk/cards/search'
+    };
+    const STATUS_BADGE_CLASSES = {
+        APPROVED: 'bg-green-100 text-green-800',
+        PENDING_REVIEW: 'bg-amber-100 text-amber-800',
+        SUPERVISOR_REJECTED: 'bg-red-100 text-red-800',
+        FROZEN: 'bg-red-100 text-red-800',
+        ESCALATED: 'bg-red-100 text-red-800'
+    };
+    const DEFAULT_BADGE_CLASS = 'bg-slate-100 text-slate-700';
+
+    const messageInput = document.getElementById('messageInput');
+    const suggestionPanel = document.getElementById('suggestionPanel');
+    const actionButtons = ['pendingApplicationsButton', 'alertCardsButton', 'sendMessageButton', 'newConversationButton']
         .map(id => document.getElementById(id));
     let conversationId = crypto.randomUUID();
+    let skills = [];
+    let suggestions = [];
+    let activeSuggestionIndex = 0;
+    let searchTimer = null;
+    let searchSequence = 0;
 
     function startNewConversation() {
         conversationId = crypto.randomUUID();
@@ -90,15 +99,23 @@
         document.getElementById('loadingIndicator').classList.toggle('hidden', !isBusy);
     }
 
-    function appendEntry(className, text) {
+    function appendElement(element) {
         document.getElementById('emptyState')?.remove();
+        const log = document.getElementById('conversationLog');
+        log.appendChild(element);
+        log.scrollTop = log.scrollHeight;
+        return element;
+    }
+
+    function appendEntry(className, text) {
         const entry = document.createElement('div');
         entry.className = className;
         entry.textContent = text;
-        const log = document.getElementById('conversationLog');
-        log.appendChild(entry);
-        log.scrollTop = log.scrollHeight;
-        return entry;
+        return appendElement(entry);
+    }
+
+    function appendError(text) {
+        appendEntry('rounded-lg bg-red-100 text-red-800 px-4 py-3 text-sm', text);
     }
 
     function appendClerkMessage(message) {
@@ -116,7 +133,7 @@
             body.className = 'whitespace-pre-wrap px-4 py-3 text-sm bg-red-50';
             body.textContent = reply;
             wrapper.append(banner, body);
-            document.getElementById('conversationLog').appendChild(wrapper);
+            appendElement(wrapper);
             return;
         }
         appendEntry('max-w-[85%] whitespace-pre-wrap rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm', reply);
@@ -137,32 +154,249 @@
             const {reply} = await response.json();
             appendAgentReply(reply);
         } catch (error) {
-            appendEntry('rounded-lg bg-red-100 text-red-800 px-4 py-3 text-sm', '呼叫 AI Agent 失敗：' + error.message);
+            appendError('呼叫 AI Agent 失敗：' + error.message);
         } finally {
             setBusy(false);
         }
     }
 
-    document.getElementById('reviewApplicationButton').addEventListener('click', () => {
-        const customerId = document.getElementById('applicantSelect').value;
-        sendToAgent(`請依 SOP 審核新戶核卡申請，客戶編號 ${customerId}`);
-    });
+    async function fetchJson(url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+        return response.json();
+    }
 
-    document.getElementById('analyzeCardButton').addEventListener('click', () => {
-        const cardNumber = document.getElementById('cardSelect').value;
-        sendToAgent(`請依 SOP 分析卡號 ${cardNumber} 的近期交易並處置`);
-    });
+    async function loadSkills() {
+        try {
+            skills = await fetchJson('/api/agent/skills');
+        } catch (error) {
+            appendError('無法取得指令清單：' + error.message);
+        }
+    }
 
+    function findSkillByName(name) {
+        return skills.find(skill => skill.name === name);
+    }
+
+    function findAgentSkillByArgument(argument) {
+        return skills.find(skill => skill.kind === 'AGENT' && skill.argument === argument);
+    }
+
+    function createStatusBadge(status, label) {
+        const badge = document.createElement('span');
+        badge.className = 'shrink-0 rounded-full px-2 py-0.5 text-xs ' + (STATUS_BADGE_CLASSES[status] ?? DEFAULT_BADGE_CLASS);
+        badge.textContent = label;
+        return badge;
+    }
+
+    function createCaseRow(item, isApplication) {
+        const targetSkill = findAgentSkillByArgument(isApplication ? 'customerId' : 'cardNumber');
+        const row = document.createElement(item.actionable ? 'button' : 'div');
+        row.className = 'flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm '
+            + (item.actionable ? 'hover:bg-blue-50' : 'text-slate-400');
+        const description = document.createElement('span');
+        description.textContent = isApplication
+            ? `${item.fullName}　${item.customerId}`
+            : `${item.holderName}　末四碼 ${item.last4}　${item.verdictLabel}`;
+        row.append(description, createStatusBadge(item.status, item.statusLabel));
+        if (item.actionable && targetSkill) {
+            const target = isApplication ? item.customerId : item.cardNumber;
+            row.addEventListener('click', () => sendToAgent(`/${targetSkill.name} ${target}`));
+        }
+        return row;
+    }
+
+    async function showCaseList(skill) {
+        appendClerkMessage('/' + skill.name);
+        try {
+            const items = await fetchJson(MCP_SERVER_URL + skill.source);
+            const isApplication = skill.source === APPLICATIONS_SOURCE;
+            const container = document.createElement('div');
+            container.className = 'max-w-[85%] rounded-lg bg-slate-50 border border-slate-200 overflow-hidden';
+            const title = document.createElement('div');
+            title.className = 'px-4 py-2 text-sm font-semibold border-b border-slate-200';
+            title.textContent = `${skill.name}（${items.length} 筆）`;
+            container.append(title, ...items.map(item => createCaseRow(item, isApplication)));
+            appendElement(container);
+        } catch (error) {
+            appendError('無法取得清單：' + error.message);
+        }
+    }
+
+    function showCaseListByName(name) {
+        const skill = findSkillByName(name);
+        if (skill) {
+            showCaseList(skill);
+        } else {
+            appendError('無法取得清單：指令清單尚未載入');
+        }
+    }
+
+    function cancelPendingSearch() {
+        clearTimeout(searchTimer);
+        searchSequence++;
+    }
+
+    function hideSuggestions() {
+        suggestions = [];
+        suggestionPanel.classList.add('hidden');
+        suggestionPanel.replaceChildren();
+    }
+
+    function renderSuggestions(items) {
+        suggestions = items;
+        activeSuggestionIndex = 0;
+        if (items.length === 0) {
+            hideSuggestions();
+            return;
+        }
+        suggestionPanel.replaceChildren(...items.map((item, index) => {
+            const option = document.createElement('div');
+            option.className = 'flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm'
+                + (index === activeSuggestionIndex ? ' bg-blue-50' : '');
+            const label = document.createElement('span');
+            label.className = 'font-medium';
+            label.textContent = item.label;
+            const detail = document.createElement('span');
+            detail.className = 'text-xs text-slate-500';
+            detail.textContent = item.detail;
+            option.append(label, detail);
+            option.addEventListener('mousedown', event => {
+                event.preventDefault();
+                selectSuggestion(index);
+            });
+            return option;
+        }));
+        suggestionPanel.classList.remove('hidden');
+    }
+
+    function moveActiveSuggestion(offset) {
+        activeSuggestionIndex = (activeSuggestionIndex + offset + suggestions.length) % suggestions.length;
+        [...suggestionPanel.children].forEach((option, index) =>
+            option.classList.toggle('bg-blue-50', index === activeSuggestionIndex));
+        suggestionPanel.children[activeSuggestionIndex].scrollIntoView({block: 'nearest'});
+    }
+
+    function selectSuggestion(index) {
+        const selected = suggestions[index];
+        hideSuggestions();
+        selected?.onSelect();
+    }
+
+    function suggestSkills(prefix) {
+        renderSuggestions(skills
+            .filter(skill => skill.name.startsWith(prefix))
+            .map(skill => ({
+                label: '/' + skill.name,
+                detail: skill.description,
+                onSelect: () => chooseSkill(skill)
+            })));
+    }
+
+    function chooseSkill(skill) {
+        if (skill.kind === 'LIST') {
+            messageInput.value = '';
+            showCaseList(skill);
+            return;
+        }
+        messageInput.value = `/${skill.name} `;
+        messageInput.focus();
+    }
+
+    function toCandidate(skill, item) {
+        const isApplicant = skill.argument === 'customerId';
+        const target = isApplicant ? item.customerId : item.cardNumber;
+        return {
+            label: isApplicant ? `${item.fullName}　${item.customerId}` : `${item.holderName}　末四碼 ${item.last4}`,
+            detail: isApplicant ? item.statusLabel : `${item.verdictLabel}　${item.statusLabel}`,
+            onSelect: () => {
+                messageInput.value = '';
+                sendToAgent(`/${skill.name} ${target}`);
+            }
+        };
+    }
+
+    function scheduleCandidateSearch(skill, keyword) {
+        cancelPendingSearch();
+        if (!keyword) {
+            hideSuggestions();
+            return;
+        }
+        const sequence = ++searchSequence;
+        searchTimer = setTimeout(async () => {
+            try {
+                const items = await fetchJson(
+                    `${MCP_SERVER_URL}${SEARCH_PATHS[skill.argument]}?q=${encodeURIComponent(keyword)}`);
+                if (sequence === searchSequence) {
+                    renderSuggestions(items.map(item => toCandidate(skill, item)));
+                }
+            } catch (error) {
+                hideSuggestions();
+            }
+        }, SEARCH_DELAY_MILLISECONDS);
+    }
+
+    function updateSuggestions() {
+        const text = messageInput.value.trimStart();
+        const menuMatch = text.match(SKILL_MENU_PATTERN);
+        if (menuMatch) {
+            cancelPendingSearch();
+            suggestSkills(menuMatch[1]);
+            return;
+        }
+        const argumentMatch = text.match(SKILL_ARGUMENT_PATTERN);
+        const skill = argumentMatch && findSkillByName(argumentMatch[1]);
+        if (skill && SEARCH_PATHS[skill.argument]) {
+            scheduleCandidateSearch(skill, argumentMatch[2].trim());
+            return;
+        }
+        cancelPendingSearch();
+        hideSuggestions();
+    }
+
+    function sendTypedMessage() {
+        const message = messageInput.value.trim();
+        if (message) {
+            cancelPendingSearch();
+            hideSuggestions();
+            sendToAgent(message);
+            messageInput.value = '';
+        }
+    }
+
+    function handleInputKeydown(event) {
+        if (event.isComposing) {
+            return;
+        }
+        const isSuggestionOpen = suggestions.length > 0;
+        if (isSuggestionOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            event.preventDefault();
+            moveActiveSuggestion(event.key === 'ArrowDown' ? 1 : -1);
+        } else if (isSuggestionOpen && event.key === 'Enter') {
+            event.preventDefault();
+            selectSuggestion(activeSuggestionIndex);
+        } else if (isSuggestionOpen && event.key === 'Escape') {
+            hideSuggestions();
+        } else if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendTypedMessage();
+        }
+    }
+
+    messageInput.addEventListener('input', updateSuggestions);
+    messageInput.addEventListener('keydown', handleInputKeydown);
+    messageInput.addEventListener('blur', () => {
+        cancelPendingSearch();
+        hideSuggestions();
+    });
+    document.getElementById('sendMessageButton').addEventListener('click', sendTypedMessage);
+    document.getElementById('pendingApplicationsButton').addEventListener('click', () => showCaseListByName('待審案件'));
+    document.getElementById('alertCardsButton').addEventListener('click', () => showCaseListByName('警示卡片'));
     document.getElementById('newConversationButton').addEventListener('click', startNewConversation);
 
-    document.getElementById('sendFreeTextButton').addEventListener('click', () => {
-        const input = document.getElementById('freeTextInput');
-        const message = input.value.trim();
-        if (message) {
-            sendToAgent(message);
-            input.value = '';
-        }
-    });
+    loadSkills();
 </script>
 </body>
 </html>

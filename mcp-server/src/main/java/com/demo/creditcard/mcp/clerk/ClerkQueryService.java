@@ -11,6 +11,8 @@ import com.demo.creditcard.mcp.fraudcontrol.FraudVerdict;
 @Service
 public class ClerkQueryService {
 
+    public static final int SEARCH_RESULT_LIMIT = 10;
+
     private final ClerkQueryRepository clerkQueryRepository;
     private final ClerkStatusPolicy clerkStatusPolicy;
     private final FraudControlService fraudControlService;
@@ -33,6 +35,27 @@ public class ClerkQueryService {
                 .map(card -> new AssessedCard(card, verdictOf(card)))
                 .filter(assessed -> clerkStatusPolicy.isAlertCard(assessed.card(), assessed.verdict()))
                 .map(this::toCardItem)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ApplicantListItem> searchApplicants(String keyword) {
+        if (keyword.isBlank()) {
+            return List.of();
+        }
+        return toApplicantItems(clerkQueryRepository.searchApplicants(LikePatterns.contains(keyword.strip()), SEARCH_RESULT_LIMIT));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CardListItem> searchCards(String keyword) {
+        if (keyword.isBlank()) {
+            return List.of();
+        }
+        var strippedKeyword = keyword.strip();
+        return clerkQueryRepository.searchCards(
+                        LikePatterns.contains(strippedKeyword), LikePatterns.endsWith(strippedKeyword), SEARCH_RESULT_LIMIT)
+                .stream()
+                .map(card -> toCardItem(new AssessedCard(card, verdictOf(card))))
                 .toList();
     }
 

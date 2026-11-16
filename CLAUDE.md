@@ -212,9 +212,14 @@ gcloud auth application-default login
 ./mvnw test
 ./mvnw -pl mcp-server test
 ./mvnw -pl agent-server test
-./mvnw -pl mcp-server spring-boot:run
-./mvnw -pl agent-server spring-boot:run
+DB_URL=jdbc:postgresql://localhost:5432/credit_card_demo DB_USERNAME=demo DB_PASSWORD=demo \
+  ./mvnw -pl mcp-server spring-boot:run
+
+GOOGLE_CLOUD_PROJECT=<gcp-project-id> GOOGLE_CLOUD_LOCATION=global VERTEX_AI_MODEL=gemini-3.6-flash \
+  ./mvnw -pl agent-server spring-boot:run
 ```
+
+開啟 `http://localhost:8080/` 為經辦畫面，`http://localhost:8080/supervisor.html` 為主管放行畫面。
 
 必要環境變數：
 

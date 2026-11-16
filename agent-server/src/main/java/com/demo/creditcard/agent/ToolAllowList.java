@@ -16,9 +16,17 @@ public class ToolAllowList {
             "getCardRiskProfile", "freezeCard", "escalateToRiskOfficer");
 
     public List<ToolCallback> filter(List<ToolCallbackProvider> providers) {
+        return filter(providers, ALLOWED_TOOL_NAMES);
+    }
+
+    public List<ToolCallback> filter(List<ToolCallbackProvider> providers, Set<String> requestedToolNames) {
         return providers.stream()
                 .flatMap(provider -> Arrays.stream(provider.getToolCallbacks()))
-                .filter(callback -> ALLOWED_TOOL_NAMES.contains(callback.getToolDefinition().name()))
+                .filter(callback -> isAllowedAndRequested(callback.getToolDefinition().name(), requestedToolNames))
                 .toList();
+    }
+
+    private static boolean isAllowedAndRequested(String toolName, Set<String> requestedToolNames) {
+        return ALLOWED_TOOL_NAMES.contains(toolName) && requestedToolNames.contains(toolName);
     }
 }

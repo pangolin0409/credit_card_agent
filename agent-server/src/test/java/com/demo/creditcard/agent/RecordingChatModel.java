@@ -15,10 +15,12 @@ class RecordingChatModel implements ChatModel {
     static final String STUB_REPLY = "stub reply";
 
     private Prompt lastPrompt;
+    private int callCount;
 
     @Override
     public ChatResponse call(Prompt prompt) {
         lastPrompt = prompt;
+        callCount++;
         return new ChatResponse(List.of(new Generation(new AssistantMessage(STUB_REPLY))));
     }
 
@@ -29,5 +31,9 @@ class RecordingChatModel implements ChatModel {
 
     Prompt lastPrompt() {
         return lastPrompt;
+    }
+
+    int callCount() {
+        return callCount;
     }
 }

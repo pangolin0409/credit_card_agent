@@ -2,6 +2,8 @@ package com.demo.creditcard.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -77,6 +79,52 @@ class CreditCardAgentServiceTest {
         creditCardAgentService.chat(newConversationId(), "那它為什麼被凍結？");
 
         assertThat(promptText()).doesNotContain("4000000000000002");
+    }
+
+    @Test
+    @DisplayName("/核卡初審 只把場景一的 3 個工具交給模型")
+    void shouldPassOnlyScenarioOneToolsWhenCardApplicationReviewInvoked() {
+        creditCardAgentService.chat(newConversationId(), "/核卡初審 A100000003");
+
+        assertThat(toolNames()).containsExactlyInAnyOrder("getApplicantProfile", "createApprovalDraft", "declineApplication");
+    }
+
+    @Test
+    @DisplayName("/規則問答 不交給模型任何工具")
+    void shouldPassNoToolsWhenRuleInquiryInvoked() {
+        creditCardAgentService.chat(newConversationId(), "/規則問答 御璽卡門檻？");
+
+        assertThat(toolNames()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("對象尚未確定時直接回覆，不呼叫模型")
+    void shouldReplyDirectlyWithoutCallingModelWhenTargetUnresolved() {
+        var callCountBefore = recordingChatModel.callCount();
+
+        var reply = creditCardAgentService.chat(newConversationId(), "/核卡初審 陳");
+
+        assertThat(reply).isEqualTo("請從候選清單選取對象");
+        assertThat(recordingChatModel.callCount()).isEqualTo(callCountBefore);
+    }
+
+    @Test
+    @DisplayName("斜線指令之後的追問回到完整的 6 個工具，並沿用先前的卡號")
+    void shouldKeepFullToolsForFollowUpAfterSlashCommand() {
+        var conversationId = newConversationId();
+        creditCardAgentService.chat(conversationId, "/刷卡風險分析 4000000000000002");
+
+        creditCardAgentService.chat(conversationId, "那它為什麼被凍結？");
+
+        assertThat(toolNames()).containsExactlyInAnyOrderElementsOf(ToolAllowList.ALLOWED_TOOL_NAMES);
+        assertThat(promptText()).contains("4000000000000002");
+    }
+
+    private List<String> toolNames() {
+        var options = (ToolCallingChatOptions) recordingChatModel.lastPrompt().getOptions();
+        return Optional.ofNullable(options.getToolCallbacks()).orElse(List.of()).stream()
+                .map(callback -> callback.getToolDefinition().name())
+                .toList();
     }
 
     private String promptText() {

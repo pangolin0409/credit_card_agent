@@ -96,6 +96,17 @@ class FraudControlToolsIntegrationTest {
         assertThat(auditCount("4000000000000005", "GUARDRAIL_BLOCKED")).isEqualTo(1);
     }
 
+    @ParameterizedTest(name = "卡號 {0} 未命中盜刷或測卡規則，鎖卡被擋下")
+    @CsvSource({"4000000000000001", "4000000000000006"})
+    @DisplayName("規則引擎未判定盜刷或測卡時，AI 不得鎖卡")
+    void shouldBlockFreezeWhenRulesFindNoFraud(String cardNumber) {
+        var outcome = fraudControlTools.freezeCard(cardNumber, "疑似盜刷");
+
+        assertThat(outcome.accepted()).isFalse();
+        assertThat(cardColumn(cardNumber, "status")).isEqualTo("ACTIVE");
+        assertThat(auditCount(cardNumber, "GUARDRAIL_BLOCKED")).isEqualTo(1);
+    }
+
     @Test
     @DisplayName("已凍結的卡片不可重複凍結")
     void shouldBlockFreezeOnAlreadyFrozenCard() {

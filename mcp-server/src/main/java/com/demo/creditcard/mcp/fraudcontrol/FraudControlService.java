@@ -1,5 +1,7 @@
 package com.demo.creditcard.mcp.fraudcontrol;
 
+import java.util.Set;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +15,8 @@ import com.demo.creditcard.mcp.shared.ToolOutcome;
 
 @Service
 public class FraudControlService {
+
+    private static final Set<FraudVerdict> FREEZABLE_VERDICTS = Set.of(FraudVerdict.OVERSEAS_FRAUD, FraudVerdict.CARD_TESTING);
 
     private final CreditCardRepository creditCardRepository;
     private final TransactionRepository transactionRepository;
@@ -41,8 +45,12 @@ public class FraudControlService {
         if (card.status() != CardStatus.ACTIVE) {
             return block(cardNumber, "卡片目前狀態為 %s，只有 ACTIVE 的卡片可以暫時凍結。".formatted(card.status()));
         }
-        if (fraudDetectionPolicy.exceedsEscalationThreshold(transactionRepository.findRecentByCardNumber(cardNumber))) {
+        var verdict = fraudDetectionPolicy.assess(card, transactionRepository.findRecentByCardNumber(cardNumber)).verdict();
+        if (verdict == FraudVerdict.ESCALATE_TO_RISK_OFFICER) {
             return block(cardNumber, "近期有單筆超過 500,000 的交易，AI 不得鎖卡，請改用 escalateToRiskOfficer 升級資深風控主管。");
+        }
+        if (!FREEZABLE_VERDICTS.contains(verdict)) {
+            return block(cardNumber, "規則引擎判定為 %s，不符合暫時凍結條件。".formatted(verdict));
         }
 
         creditCardRepository.freeze(cardNumber, freezeReason);

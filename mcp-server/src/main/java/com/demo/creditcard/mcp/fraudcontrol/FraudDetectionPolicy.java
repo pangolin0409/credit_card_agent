@@ -47,10 +47,6 @@ public class FraudDetectionPolicy {
         return new FraudAssessment(FraudVerdict.NO_ANOMALY, metrics, "未命中任何異常規則。");
     }
 
-    public boolean exceedsEscalationThreshold(List<TransactionRecord> transactions) {
-        return maxSingleAmount(transactions) > ESCALATION_SINGLE_AMOUNT_THRESHOLD;
-    }
-
     private RiskMetrics measure(CardRiskSubject subject, List<TransactionRecord> transactions) {
         if (transactions.isEmpty()) {
             return new RiskMetrics(0, 0, 0);

@@ -161,18 +161,6 @@ class FraudDetectionPolicyTest {
         assertThat(assessment.metrics()).isEqualTo(new RiskMetrics(0, 0, 0));
     }
 
-    @Test
-    @DisplayName("單筆 500,001 元超過鎖卡紅線")
-    void shouldExceedEscalationThresholdAboveFiveHundredThousand() {
-        assertThat(policy.exceedsEscalationThreshold(List.of(transaction(0, 500_001, "CH", true)))).isTrue();
-    }
-
-    @Test
-    @DisplayName("單筆 500,000 元未超過鎖卡紅線")
-    void shouldNotExceedEscalationThresholdAtFiveHundredThousand() {
-        assertThat(policy.exceedsEscalationThreshold(List.of(transaction(0, 500_000, "CH", true)))).isFalse();
-    }
-
     private static CardRiskSubject subject(String travelCountry) {
         return new CardRiskSubject("4000000000000000", "B000000000", "測試持卡人", CardStatus.ACTIVE,
                 travelCountry != null, travelCountry);

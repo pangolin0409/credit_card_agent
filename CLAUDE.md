@@ -107,7 +107,8 @@ credit_card_ai_agent/
 1. `credit_card_sop.md`：讓 AI 依 SOP 判斷並說明理由。
 2. mcp-server 寫入型 Tool：執行前用 Policy 類別重新驗證，違反即拒絕執行，回傳拒絕原因，並寫入 `audit_logs`（`action_type = 'GUARDRAIL_BLOCKED'`）。
    - `createApprovalDraft`：拒絕黑名單、DBR 不足、卡別與門檻不符、額度超過 `min(卡別上限, remainingDebtCapacity)` 的草稿。
-   - `freezeCard`：卡片有任一筆 `amount > 500,000` 時拒絕（必須升級），卡片非 `ACTIVE` 時拒絕。
+   - `freezeCard`：卡片非 `ACTIVE` 時拒絕；規則引擎判定為 `ESCALATE_TO_RISK_OFFICER` 時拒絕（必須升級）；判定不是 `OVERSEAS_FRAUD` 或 `CARD_TESTING` 時拒絕（避免誤鎖正常卡片）。
+3. agent-server：工具執行錯誤（例如查無客戶或卡號）會轉成 `{"error": "..."}` JSON 回給模型，讓 AI 能告知經辦查無資料，而不是讓請求失敗。
 
 ## 五、MCP Tool 清單
 

@@ -95,7 +95,7 @@ public record ToolOutcome(boolean accepted, String message) {
 
 - 所有寫入型 Tool 與主管 API 的「業務寫入」和「稽核寫入」要放在同一個 `@Transactional` 方法內。
 - 主管放行相關功能不可加上 `@Tool`。
-- SOP 以 `Resource` 從 `classpath:skills/credit_card_sop.md` 載入，設為 `ChatClient` 的 default system prompt；禁止把 SOP 內容寫死在 Java 字串中。
+- SOP 拆成 `classpath:skills/*.md`，由 `SkillCatalog` 載入，`SkillRouter` 每次請求組出 system prompt 與可用工具；禁止把 SOP 內容寫死在 Java 字串中。
 
 ## 六、SQL
 

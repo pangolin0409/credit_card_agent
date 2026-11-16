@@ -28,7 +28,7 @@
 │ static/index.html      經辦操作畫面               │        │ @Tool  唯讀查詢 + 受控寫入          │
 │ static/supervisor.html 主管放行畫面 ──────────────┼─REST──▶│ /api/supervisor/**（非 @Tool）      │
 │ AgentController  POST /api/agent/chat            │        │ Policy 類別（規則與護欄）           │
-│ ChatClient + skills/credit_card_sop.md           │──MCP──▶│ JdbcClient ─▶ PostgreSQL            │
+│ ChatClient + skills/*.md（SkillRouter 限縮工具） │──MCP──▶│ JdbcClient ─▶ PostgreSQL            │
 │ Vertex AI Gemini                                 │        │ schema.sql / data.sql               │
 └──────────────────────────────────────────────────┘        └─────────────────────────────────────┘
 ```
@@ -59,7 +59,7 @@ credit_card_ai_agent/
         ├── java/com/demo/creditcard/agent/
         └── resources/
             ├── application.properties
-            ├── skills/credit_card_sop.md
+            ├── skills/{common.md, card-application-review.md, card-risk-analysis.md, rule-inquiry.md}
             └── static/{index.html, supervisor.html}
 ```
 
@@ -67,7 +67,7 @@ credit_card_ai_agent/
 
 1. **資料庫建置**：完成 `schema.sql`（5 張表）與 `data.sql`（第七節的 demo 測試資料）。
 2. **TDD 開發 MCP Server**：先寫 Tool 整合測試（紅燈）→ 實作 `@Tool`、Policy 與 Repository（綠燈）→ 重構。
-3. **TDD 開發 AI Agent Server**：先寫測試，驗證 Skill 載入與工具調度邊界（紅燈）→ 實作 `credit_card_sop.md` 與 Agent API（綠燈）→ 重構。
+3. **TDD 開發 AI Agent Server**：先寫測試，驗證 Skill 載入與工具調度邊界（紅燈）→ 實作 `skills/*.md` 與 Agent API（綠燈）→ 重構。
 
 每一步都必須先看到測試失敗，才能寫實作程式。
 
@@ -104,7 +104,7 @@ credit_card_ai_agent/
 
 規則同時存在於兩處，**prompt 只是第一道防線，Tool 層必須強制把關**：
 
-1. `credit_card_sop.md`：讓 AI 依 SOP 判斷並說明理由。
+1. `skills/*.md`：讓 AI 依 SOP 判斷並說明理由。
 2. mcp-server 寫入型 Tool：執行前用 Policy 類別重新驗證，違反即拒絕執行，回傳拒絕原因，並寫入 `audit_logs`（`action_type = 'GUARDRAIL_BLOCKED'`）。
    - `createApprovalDraft`：拒絕黑名單、DBR 不足、卡別與門檻不符、額度超過 `min(卡別上限, remainingDebtCapacity)` 的草稿。
    - `freezeCard`：卡片非 `ACTIVE` 時拒絕；規則引擎判定為 `ESCALATE_TO_RISK_OFFICER` 時拒絕（必須升級）；判定不是 `OVERSEAS_FRAUD` 或 `CARD_TESTING` 時拒絕（避免誤鎖正常卡片）。
@@ -128,6 +128,17 @@ credit_card_ai_agent/
 | GET | `/api/supervisor/approval-drafts?status=PENDING_REVIEW` | — |
 | POST | `/api/supervisor/approval-drafts/{draftId}/approve` | `DRAFT_APPROVED` |
 | POST | `/api/supervisor/approval-drafts/{draftId}/reject` | `DRAFT_REJECTED` |
+
+經辦清單與搜尋 REST API（mcp-server，非 Tool，僅 GET，CORS 只允許 `http://localhost:8080`，不寫稽核）：
+
+| Method | Path | 用途 |
+|---|---|---|
+| GET | `/api/clerk/applications` | 新戶申請清單與狀態（待初審、待主管放行、已核卡、主管退回、已婉拒） |
+| GET | `/api/clerk/alert-cards` | 警示卡片清單：規則引擎判定非無異常、非 ACTIVE 或已升級的卡片，附處理狀態 |
+| GET | `/api/clerk/applicants/search?q=` | `/核卡初審` 自動完成：姓名或客戶編號片段，最多 10 筆 |
+| GET | `/api/clerk/cards/search?q=` | `/刷卡風險分析` 自動完成：持卡人姓名或卡號末碼，最多 10 筆 |
+
+agent-server 另提供 `GET /api/agent/skills`，回傳斜線選單需要的 skill 名稱、種類、說明與參數（不含 SOP 內文）。
 
 ## 六、資料庫
 
@@ -195,7 +206,7 @@ credit_card_ai_agent/
 | `4000000000000005` | 超高金額紅線 | 單筆 680,000 | 不鎖卡，升級風控主管 |
 | `4000000000000006` | 正常消費 | 國內一般消費 | 無異常 |
 
-## 八、Agent 行為規範（寫入 `credit_card_sop.md`）
+## 八、Agent 行為規範（寫入 `skills/*.md`）
 
 - 以繁體中文回覆經辦，結論先講，再列出命中的規則與計算數字。
 - 規則、門檻、流程類的一般問答可以直接依 SOP 回答，不需要編號。
@@ -204,6 +215,10 @@ credit_card_ai_agent/
 - 一般問答與追問不得觸發寫入型 Tool，只有經辦明確要求審核或處置時才可執行。
 - 寫入型 Tool 回傳拒絕時，要如實告知經辦，不可重試或換參數繞過。
 - 紅線案件的回覆開頭必須是明顯的緊急警告。
+- 斜線指令：`/待審案件`、`/警示卡片`（前端清單，不經 LLM）、`/核卡初審 客戶編號`、`/刷卡風險分析 卡號`、`/規則問答 問題`。名稱以 `skills/*.md` 的 frontmatter `name` 為唯一來源。
+- 每個 skill 只拿得到 frontmatter `tools` 列出的工具（必須是 `ToolAllowList` 的子集，否則啟動失敗）；`/規則問答` 沒有任何工具。
+- 參數不是完整客戶編號（`^[A-Z]\d{9}$`）或卡號（`^\d{16}$`）、指令不存在、或問題空白時，agent-server 直接回覆提示，不呼叫 LLM。
+- 不打斜線的自由提問與追問，載入共用規則加兩個場景的 skill，維持全部 6 個工具。
 
 ## 九、常用指令
 
